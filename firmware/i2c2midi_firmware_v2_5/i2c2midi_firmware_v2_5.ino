@@ -4,10 +4,11 @@
 
 #include <i2c_t3.h>
 #include <MIDI.h>
+#include "TimerThree.h"
 
 // DEBUG
 // Uncomment this to see i2c messages etc. in the serial monitor:
-// #define DEBUG      
+#define DEBUG      
 
 // USB MIDI
 // This is for your own modifications or hacks. Don't forget to select 'Tools' -> 'USB Type' -> 'MIDI + Serial' when uploading to the Teensy.
@@ -22,6 +23,20 @@ void receiveEvent(size_t count);
 
 // MIDI
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
+
+// clock hax
+int clockState =0;
+int bpm =120;
+const byte CLOCK = 0xF8;
+volatile float midIntervall;
+unsigned long pastTime = micros();
+unsigned long currentTime = micros();
+int tickCount[4]= {0,0,0,0};//use to count steps for each rotary
+int tickCounter;
+int stepNum=48;
+byte incomingType;
+boolean BPMExternal = 0;
+boolean masterClock = true; //true for using teensy usbmidi clock
 
 // Values init
 unsigned long notes[16][8][4];    // array to store the note information: pitch, start time, duration, currently on/off
@@ -56,6 +71,9 @@ void setup() {
 
   // Start MIDI
   MIDI.begin();
+  
+  Timer3.initialize(100); //ties-up Teensy 3.5 pins 29 and 30
+  Timer3.attachInterrupt(MidiClock);
   
   // start up animation
   for (int i=0; i < 4; i++) {
@@ -121,7 +139,13 @@ void loop() {
       // CLOCK messages have the same status for all MIDI channels 1-16
       // EX.M.CLK
       if (databuf[2] == 248) {
+        //Timer3.detachInterrupt();
         MIDI.sendRealTime(midi::Clock);   // !! not optimal, because this should be 24ppq
+        //masterClock =false;
+        
+        MidiClock();
+        //BPMExternal=0;
+      
         #ifdef USB_MIDI
           usbMIDI.sendRealTime(usbMIDI.Clock);
         #endif
@@ -129,6 +153,11 @@ void loop() {
       // EX.M.START
       if (databuf[2] == 250) {
         MIDI.sendRealTime(midi::Start);
+        tickCounter=0;
+        
+        for(int allCounters=0;allCounters<4;allCounters++){
+          tickCount[allCounters]=15;
+          } 
         #ifdef USB_MIDI
           usbMIDI.sendRealTime(usbMIDI.Start);
         #endif
@@ -172,6 +201,12 @@ void loop() {
           usbMIDI.sendAfterTouch(constrain(value, 0, 127), lastChannel+1);
         #endif
         blinkLED(2);                          
+      }
+
+      // set master clock BPM
+      if (databuf[1] == 3) {
+        bpm = value;
+        Serial.println(bpm);
       }
 
       // set I2C address (99)
@@ -347,4 +382,30 @@ void checkLEDs() {
   if (currentMillis - lastLEDMillis2 >= LEDBlinkLength) {
     digitalWrite(led2,LOW);
   }
+}
+
+void  MidiClock(){  //do this every time the Timer3 interval timer is triggered
+  
+  if (masterClock){   //allows clock to be switched off  
+     currentTime = micros();
+     midIntervall = (1000/(bpm/60.0))/24.0;//set the midi clock using ref to bpm
+      
+     if ((currentTime - pastTime) > midIntervall*1000) {
+      MIDI.sendRealTime(midi::Clock);
+
+
+      pastTime = currentTime;
+   tickCounter++;
+   if(tickCounter >=stepNum){tickCounter=0;}
+      
+     }//end if intervl time hit
+    }//end if masterclock
+
+    else{
+
+   pastTime = currentTime;
+   tickCounter++;
+   if(tickCounter >=stepNum){tickCounter=0;}
+     //   }
+    }//end of if not masterclock
 }
