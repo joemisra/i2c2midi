@@ -1,5 +1,5 @@
-Hax
-
+## Midi Master Clock Hax
+```
 I
 $1; SYNC -1
 EX.P 3 150
@@ -8,8 +8,9 @@ J FLIP; M.ACT J
 IF J: EX.M.START
 ELSE: EX.M.STOP
 
+M
 EX 4: EX.M.CONT; EX.M.CLK
-
+```
 # i2c2midi
 
 **i2c2midi is a simple DIY 4 hp eurorack module that speaks I2C and MIDI.**
